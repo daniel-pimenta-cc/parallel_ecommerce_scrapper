@@ -10,10 +10,12 @@ from helper import *
 #conectando ao mongoDB
 client = pymongo.MongoClient("mongodb://localhost:27017/")
 db = client["atacadao_3"]
-col = db["produtos"]
+col = db["products"]
 
 def scrape_category(url, initial_page, pages_to_scrape):
-    ## Extrai o nome do produto e links de uma categoria especifica
+    ##  Extracts product names and links from a specific category and stores them in MongoDB. 
+    ##  Receives the category's product URL, the page to start scraping, and the number of pages to traverse.
+    
     #set the page number
     page = initial_page
 
@@ -32,11 +34,11 @@ def scrape_category(url, initial_page, pages_to_scrape):
         #criando o objeto soup
         soup = BeautifulSoup(response.content, 'html.parser')
 
-        #pegando todos os produtos <li class="product-item not-logged">
+        #pegando todos os products <li class="product-item not-logged">
 
-        produtos = soup.find_all('li', class_='product-item not-logged')
+        products = soup.find_all('li', class_='product-item not-logged')
 
-        for product in produtos:
+        for product in products:
             name_element = product.find_all('a', class_='product-item-link')
             product_name = name_element[0].text.strip() if name_element else ""
 
@@ -62,36 +64,30 @@ def scrape_category(url, initial_page, pages_to_scrape):
             print('Salvando: ', product_name)
 
 def scrape_page(url):
-    ## Extrai os dados do produto
+    ## ## Extracts data from a specific product and saves it in MongoDB.
     response = requests.get(url)
 
     #print open page
     print("Open page: " + url)
     response = requests.get(url)
 
-    #criando o objeto soup
     soup = BeautifulSoup(response.content, 'html.parser')
 
-    #pegando todos os produtos <li class="product-item not-logged">
 
-    produtos = soup.find_all('li', class_='product-item not-logged')
+    products = soup.find_all('li', class_='product-item not-logged')
 
-    for product in produtos:
+    for product in products:
         name_element = product.find_all('a', class_='product-item-link')
         product_name = name_element[0].text.strip() if name_element else ""
 
-        # Extrair o link do produto
         product_link = name_element[0]['href'] if name_element else ""
 
-        # Extrair a marca
         brand_element = product.find_all('span', class_='brand')
         brand = brand_element[0].text.strip() if brand_element else ""
 
-        # Extrair o tamanho
         size_element = product.find_all('span', class_='size')
         size = size_element[0].text.strip() if size_element else ""
 
-        #adicinando os dados no mongoDB
         col.insert_one({
             'name': product_name,
             'link': product_link,
@@ -102,32 +98,26 @@ def scrape_page(url):
         print('Salvando: ', product_name)
 
 def scrape_page(url,category_name):
-    ## Extrai as informações do produto e salva o nome da categoria 
+    ## Extracts information from a product and saves it along with the category name.
     response = requests.get(url)
 
-    #print open page
     print("Open page: " + url)
     response = requests.get(url)
 
-    #criando o objeto soup
     soup = BeautifulSoup(response.content, 'html.parser')
 
-    #pegando todos os produtos <li class="product-item not-logged">
 
-    produtos = soup.find_all('li', class_='product-item not-logged')
+    products = soup.find_all('li', class_='product-item not-logged')
 
-    for product in produtos:
+    for product in products:
         name_element = product.find_all('a', class_='product-item-link')
         product_name = name_element[0].text.strip() if name_element else ""
 
-        # Extrair o link do produto
         product_link = name_element[0]['href'] if name_element else ""
 
-        # Extrair a marca
         brand_element = product.find_all('span', class_='brand')
         brand = brand_element[0].text.strip() if brand_element else ""
 
-        # Extrair o tamanho
         size_element = product.find_all('span', class_='size')
         size = size_element[0].text.strip() if size_element else ""
 
@@ -143,7 +133,7 @@ def scrape_page(url,category_name):
         print('Salvando: ', product_name)
 
 def scrape_category(category_url, initial_page, pages_to_scrape, num_threads):
-    ## Extrai o nome do produto e links de uma categoria especifica utilizando paralelismo para agilizar 
+    ## Extracts product names and links from a specific category using multiple threads to speed up execution.
     url = category_url
 
     #set the page number
@@ -166,7 +156,7 @@ def scrape_category(category_url, initial_page, pages_to_scrape, num_threads):
     pool.join()
 
 def scrape_category(category_url, initial_page, pages_to_scrape, num_threads, category_name):
-    ## Extrai o nome do produto e links e salva no bd junto com o nome de uma categoria especifica utilizando paralelismo para agilizar 
+    ## Extracts product names and links from a specific category using multiple threads to speed up execution.
     url = category_url
 
     #set the page number
@@ -191,54 +181,43 @@ def scrape_category(category_url, initial_page, pages_to_scrape, num_threads, ca
     pool.join()
     
 def extract_product_info(url):
-    # Extrai informações da pagina do produto
+    ## Extracts information from the product page.
     response = requests.get(url)
     if response.status_code == 200:
         html = response.text
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Extrair informações do produto
         image_url = soup.find('meta', property='og:image')['content']
-
 
         ean = soup.find('span', class_='ean').text.strip()
 
-        # Extrair ocorrências únicas de CX-numero
         cx_numbers = extract_cx_numbers(html)
-
         
-        #atualiza produto com as informações extraidas e como já foi raspado
         col.update_one({"link": url}, {"$set": {"images_url": image_url, "ean": ean, "cx_numbers": cx_numbers, "scraped": True}})
     
     else:
         return None
 
 def scrape_all_products(num_threads):
-    # pega todos os produtos não raspados
+    ## Iterates over all the products saved in MongoDB and extracts their information.
+
     #products = list(col.find({"scraped": {"$exists": False}}))
-    #pega todos os produtos
     products = list(col.find({}))
     num_products = len(products)
 
-    # inicia a execução das threads
     with multiprocessing.Pool(processes=num_threads) as pool:
-        for i, link in enumerate(pool.imap_unordered(extract_product_info, [video["link"] for video in products])):
-            # atualiza o campo "scraped" para o produto
+        for i, link in enumerate(pool.imap_unordered(extract_product_info, [prod["link"] for prod in products])):
             col.update_one({"link": link}, {"$set": {"scraped": True}})
 
-            # imprime informações sobre o progresso
-            print(f"Produto {i+1}/{num_products} raspado: {link}")
+            print(f"Product {i+1}/{num_products} raspado: {link}")
 
 def save_to_csv():
-    # pega todos os produtos que tem as informações completas
+    ## Save al the product information on a csv to import in WoCommerce
     products = list(col.find({"ean": {"$exists": True}}))
     
-    # cria um arquivo csv
-    with open("produtos.csv", "w", encoding="utf-8") as file:
-        # escreve o cabeçalho
+    with open("products.csv", "w", encoding="utf-8") as file:
         file.write("SKU;Name;Short Description;Description;Categories;Tags;Attribute 1 name;Attribute 1 value(s)\n")
 
-        # escreve os dados de cada produto
         for product in products:
             sku = product["ean"]
             name = product["nome"] 
@@ -247,33 +226,29 @@ def save_to_csv():
             categories =    product["category_name"] + ',' + "Marca > " + product["marca"] 
             tags = product["tamanho"] 
             attribute_1_name = "Quantidade Caixa"
-            #cria uma string com todos os cx_numbers separados por virgula
             attribute_1_values = ",".join(product["cx_numbers"])
             print(attribute_1_values)
 
-            #Se algum protudo tiver qualquer um dos campos vazio, ele não é escrito no csv
             if not sku or not name or not short_description or not description or not categories or not tags or not attribute_1_name or not attribute_1_values:
                 continue
 
             file.write(f"{sku};{name};{short_description};{description};{categories};{tags};{attribute_1_name};{attribute_1_values}\n")
 
 def download_images():
-    # pega todos os produtos que tem as informações completas
+    ## Download all the products images 
     products = list(col.find({"ean": {"$exists": True}}))
     num_products = len(products)
 
-    # inicia a execução das threads
     with multiprocessing.Pool(processes=20) as pool:
         for i, link in enumerate(pool.imap_unordered(download_image, [video["images_url"] for video in products])):
-            # imprime informações sobre o progresso
-            print(f"Imagem {i+1}/{num_products} baixada: {link}")
+            print(f"Imagem {i+1}/{num_products} downloaded: {link}")
 
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
     num_threads = 24
     categorys_links = categorys
-    ##itera sobre as categorias e salva o nome e link dos produtos no banco de dados 
+    ##itera sobre as categorias e salva o nome e link dos products no banco de dados 
    
     #itera sobre todo o tamanho da lista de links
     """
@@ -287,10 +262,10 @@ if __name__ == '__main__':
             #atualiza a categoria com a chave 'scraped' = True
             categorys_links[i]['scraped'] = True
     """
-    ## Roda o scrapper em todos produtos do banco 
+    ## Roda o scrapper em todos products do banco 
     #scrape_all_products(num_threads)
     ## Salva informações utilizadas em um cvs para importação
     #save_to_csv()
-    ## Baixa as imagens dos produtos 
+    ## Baixa as imagens dos products 
     #download_images()
     create_image_csv()
